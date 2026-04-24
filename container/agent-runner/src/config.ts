@@ -11,6 +11,8 @@ const CONFIG_PATH = '/workspace/agent/container.json';
 
 export interface RunnerConfig {
   provider: string;
+  /** Optional model override; undefined = let the provider pick its default. */
+  model?: string;
   assistantName: string;
   groupName: string;
   agentGroupId: string;
@@ -41,6 +43,26 @@ export function resolveProvider(envValue: string | undefined, configValue: unkno
 }
 
 /**
+ * Pick the model name with env-over-config precedence, same shape as
+ * resolveProvider. The host resolves the full
+ * `sessions.model → agent_groups.model → container.json.model` ladder and
+ * passes the result as AGENT_MODEL; we read env first so per-session
+ * overrides work without mutating the shared per-agent-group container.json.
+ *
+ * Returns undefined when nothing is set — downstream providers interpret
+ * that as "use your SDK default" rather than substituting a hardcoded one.
+ *
+ * Model names are opaque: preserved case, just trimmed.
+ */
+export function resolveModel(envValue: string | undefined, configValue: unknown): string | undefined {
+  const env = typeof envValue === 'string' ? envValue.trim() : '';
+  if (env) return env;
+  const cfg = typeof configValue === 'string' ? configValue.trim() : '';
+  if (cfg) return cfg;
+  return undefined;
+}
+
+/**
  * Load config from container.json. Called once at startup.
  * Falls back to sensible defaults for any missing field.
  */
@@ -56,6 +78,7 @@ export function loadConfig(): RunnerConfig {
 
   _config = {
     provider: resolveProvider(process.env.AGENT_PROVIDER, raw.provider),
+    model: resolveModel(process.env.AGENT_MODEL, raw.model),
     assistantName: (raw.assistantName as string) || '',
     groupName: (raw.groupName as string) || '',
     agentGroupId: (raw.agentGroupId as string) || '',
